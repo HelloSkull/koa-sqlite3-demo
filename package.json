@@ -14,5 +14,5 @@
     "start": "nodemon app.js"
   },
   "author": "Skull",
-  "license": "ISC",
+  "license": "ISC"
 }
