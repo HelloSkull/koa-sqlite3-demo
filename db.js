@@ -22,6 +22,12 @@ const SQL_GET_COUNT = `SELECT count(*) as cnt FROM ${TABLE_NAME}`;
 
 const SQL_DELETE = `DELETE FROM ${TABLE_NAME} WHERE id = ?`;
 
+//下一条
+const SQL_GET_NEXT = `SELECT *  FROM ${TABLE_NAME} WHERE  id > ?  ORDER BY id ASC LIMIT 1`;
+
+//上一条
+const SQL_GET_PREVIOUS = `SELECT *  FROM ${TABLE_NAME} WHERE  id < ?  ORDER BY id DESC LIMIT 1`;
+
 // limit : 要显示多少条记录
 // offset : 跳过多少条记录
 const SQL_GET_PAGE = `SELECT * FROM ${TABLE_NAME} LIMIT ? OFFSET ?`;
@@ -41,93 +47,90 @@ class SQLiteStore {
         let sqlite =  sqlite3.verbose();
         this.__db = new sqlite.Database(filename);
         const self =this;
-        self.__db.serialize(function() {
-            //建立星新表
-            self.__db.run(SQL_CREATE_TABLE);
-            console.log("table created!")
-        });
+        //建立新表
+        self.__db.run(SQL_CREATE_TABLE);
+        console.log(`${filename} created!`)
     }
 
     //添加一条数据
-    add_article(param){
-        const self = this;
-        const { params,successCallBack, failCallBack} = param;
-        const { title,author,readNum,content }  = params;
-        const createTime = new Date().getTime();
-        const updateTime = new Date().getTime();
-        //serial ize():将执行模式设置为序列化。这意味着最多只有一个语句对象可以一次执行查询
-        // self.__db.serialize(()=>{
-            //prepare() : 准备SQL语句，并可选地绑定指定的参数，并在完成后调用回调。该函数返回一个Statement对象。
-            const stmt = self.__db.prepare(SQL_SET);
-            stmt.run(title,author,readNum,content,createTime,updateTime,(err)=>{
-                if(!err){
-                    successCallBack && successCallBack();
-                }else{
-                    failCallBack && failCallBack(err);
-                }
-            });
-            //finalize():完成声明
-            stmt.finalize();
-        // })
+    add_article(params){
+        return new Promise((resolve, reject)=>{
+            const self = this;
+            const { title,author,readNum,content }  = params;
+            const createTime = new Date().getTime();
+            const updateTime = new Date().getTime();
+            //serialize():将执行模式设置为序列化。这意味着最多只有一个语句对象可以一次执行查询
+            // self.__db.serialize(()=>{
+                //prepare() : 准备SQL语句，并可选地绑定指定的参数，并在完成后调用回调。该函数返回一个Statement对象。
+                const stmt = self.__db.prepare(SQL_SET);
+                stmt.run(title,author,readNum,content,createTime,updateTime,(err)=>{
+                    if(!err){
+                        resolve(1);
+                    }else{
+                        reject(0);
+                        console.log("add_article error->",err);
+                    }
+                });
+                //finalize():完成声明
+                stmt.finalize();
+            // })
+        });
     }
 
     //批量删除
-    batch_delete(param){
-        const self = this;
-        const { params,successCallBack, failCallBack} = param;
-        const { idList}  = params;
-        let sqlTotal = "";
-        idList.forEach((v,i)=>{
-            sqlTotal += `;DELETE FROM "${TABLE_NAME}" WHERE id = ${v}`;
-        });
-
-        self.__db.exec(sqlTotal,(err)=>{
-            if(!err){
-                successCallBack && successCallBack();
-            }else{
-                failCallBack && failCallBack(err);
-            }
+    batch_delete(params){
+        return new Promise((resolve, reject)=>{
+            const self = this;
+            const { idList}  = params;
+            let sqlTotal = "";
+            idList.forEach((v,i)=>{
+                sqlTotal += `;DELETE FROM "${TABLE_NAME}" WHERE id = ${v}`;
+            });
+           // exex() 可以批量执行语句
+            self.__db.exec(sqlTotal,(err)=>{
+                if(!err){
+                    resolve(1);
+                }else{
+                    reject(0);
+                    console.log("batch_delete error->",err);
+                }
+            });
         });
     }
 
     //根据id找数据
-    get_id(param){
+    get_id(params){
         return new Promise((resolve, reject)=>{
             const self = this;
-            const { params ,successCallBack,failCallBack } = param;
             const { id }  = params;
-            console.log("id ->",id);
-            self.__db.serialize(()=>{
-                const stmt = self.__db.prepare(SQL_GET_ID);
-                //查询单条
-                stmt.get(id,(err,data)=>{
-                    if(!err){
-                        successCallBack && successCallBack(data);  //前端
-                        resolve(data)  //后端
-                    }else{
-                        failCallBack && failCallBack(err);
-                        reject(err)
-                    }
-                });
-                stmt.finalize();
-            })
+            const stmt = self.__db.prepare(SQL_GET_ID);
+            //查询单条
+            stmt.get(id,(err,data)=>{
+                if(!err){
+                    resolve(data);
+                }else{
+                    reject(0);
+                    console.log("get_id error->",err);
+                }
+            });
+            stmt.finalize();
         });
     }
 
     //根据id更新
-    update_id(param){
-        const self = this;
-        const { params,successCallBack,failCallBack } = param;
-        const { id,title,author,content }  = params;
-        const updateTime = new Date().getTime();
-        self.__db.serialize(()=>{
+    update_id(params){
+        return new Promise((resolve,reject)=>{
+            const self = this;
+            const { id,title,author,content }  = params;
+            const updateTime = new Date().getTime();
             const stmt = self.__db.prepare(SQL_UPDATE_ID);
             //更新数据
             stmt.run(title,author,content,updateTime,id,(err,data)=>{
                 if(!err){
-                    successCallBack && successCallBack(data);
+                    resolve(data)
                 }else{
-                    failCallBack && failCallBack(err);
+                    reject(0);
+                    console.log("update_id error->",err);
                 }
             });
             stmt.finalize();
@@ -135,47 +138,76 @@ class SQLiteStore {
     }
 
     //获取所有数据的数量
-    get_all_count(param){
+    get_all_count(){
         return new Promise((resolve,reject)=>{
             const self = this;
-            const {successCallBack,failCallBack } = param;
-            self.__db.serialize(()=>{
-                const stmt = self.__db.prepare(SQL_GET_COUNT);
-                //查询数据的数量
-                stmt.get((err,data)=>{
-                    if(!err){
-                        successCallBack && successCallBack(data);
-                        resolve(data);
-                    }else{
-                        failCallBack && failCallBack(err);
-                        reject(err)
-                    }
-                });
-                stmt.finalize();
-            })
+            const stmt = self.__db.prepare(SQL_GET_COUNT);
+            //查询数据的数量
+            stmt.get((err,data)=>{
+                if(!err){
+                    resolve(data);
+                }else{
+                    reject(0);
+                    console.log("get_all_count error->",err);
+                }
+            });
+            stmt.finalize();
         })
     }
 
     //分页查询数据
-    get_page(param){
+    get_page(params){
         return new Promise((resolve, reject)=>{
             const self = this;
-            const { params ,successCallBack,failCallBack } = param;
             const { pageIndex,pageSize } = params;
-            self.__db.serialize(()=>{
-                const stmt = self.__db.prepare(SQL_GET_PAGE);
-                //查询多条
-                stmt.all(pageSize,pageSize * pageIndex,(err,data)=>{
-                    if(!err){
-                        successCallBack && successCallBack(data);
-                        resolve(data);
-                    }else{
-                        failCallBack && failCallBack(err);
-                        reject(err)
-                    }
-                });
-                stmt.finalize();
-            })
+            const stmt = self.__db.prepare(SQL_GET_PAGE);
+            //查询多条
+            stmt.all(pageSize,pageSize * pageIndex,(err,data)=>{
+                if(!err){
+                    resolve(data);
+                }else{
+                    reject(0);
+                    console.log("get_page error->",err);
+                }
+            });
+            stmt.finalize();
+        })
+    }
+    //查找上一条
+    get_page_previous (params){
+        return new Promise((resolve, reject)=>{
+            const self = this;
+            const { id } = params;
+            const stmt = self.__db.prepare(SQL_GET_PREVIOUS);
+            stmt.all(id,(err,data)=>{
+                if(!err){
+                    resolve(data);
+                }else{
+                    reject(0);
+                    console.log("get_page_previous error->",err);
+                }
+            });
+            stmt.finalize();
+        })
+    }
+
+    //查找下一条
+    get_page_next (params){
+        return new Promise((resolve, reject)=>{
+            const self = this;
+            const { id } = params;
+            console.log("id ->",id);
+            const stmt = self.__db.prepare(SQL_GET_NEXT);
+            stmt.all(id,(err,data)=>{
+                if(!err){
+                    resolve(data);
+                    console.log("get_page_next data->",data);
+                }else{
+                    reject(0);
+                    console.log("get_page_next error->",err);
+                }
+            });
+            stmt.finalize();
         })
     }
 
